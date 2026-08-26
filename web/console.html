@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>港口岸电监控台</title>
+<style>
+body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 0; background: #0e1a2b; color: #d7e3f4; }
+header { background: #12263a; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+h1 { font-size: 20px; margin: 0; }
+.status-line { font-size: 13px; color: #9fb6d0; }
+main { padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+section { background: #14283e; border: 1px solid #21405f; border-radius: 8px; padding: 12px; }
+section h2 { font-size: 15px; margin: 0 0 10px; color: #9fd0ff; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1d3854; }
+th { color: #7fa4c7; font-weight: normal; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.ok { background: #123c2a; color: #6fe3a0; }
+.warn { background: #4a3513; color: #ffd47f; }
+.bad { background: #4a1717; color: #ff9a9a; }
+button { background: #1d4d78; color: #fff; border: 0; border-radius: 4px; padding: 6px 14px; cursor: pointer; margin-right: 8px; }
+button:hover { background: #28679f; }
+button.danger { background: #7c2626; }
+label { font-size: 13px; }
+input { background: #0e1a2b; border: 1px solid #21405f; color: #d7e3f4; border-radius: 4px; padding: 4px 8px; margin: 0 6px; }
+pre { white-space: pre-wrap; font-size: 12px; color: #b9cbe0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>港口岸电监控台</h1>
+  <div class="status-line" id="clock">--:--:--</div>
+</header>
+<main>
+  <section>
+    <h2>并网状态</h2>
+    <table>
+      <tr><th>状态</th><td id="grid-state">--</td></tr>
+      <tr><th>开关</th><td id="breaker-state">--</td></tr>
+      <tr><th>相位核对</th><td id="phase-state">--</td></tr>
+      <tr><th>控制方式</th><td id="control-mode">--</td></tr>
+      <tr><th>执行次数</th><td id="exec-count">--</td></tr>
+    </table>
+    <div style="margin-top:10px">
+      <button onclick="separate()" class="danger">解列</button>
+      <button onclick="dispatch()">自动并网下发</button>
+    </div>
+  </section>
+  <section>
+    <h2>容量分配</h2>
+    <table>
+      <tr><th>岸电总容量</th><td id="plan-shore">--</td></tr>
+      <tr><th>已分配</th><td id="plan-used">--</td></tr>
+      <tr><th>剩余</th><td id="plan-remain">--</td></tr>
+    </table>
+    <div style="margin-top:10px">
+      <label><input type="checkbox" id="override-box" onchange="setOverride()"> 就地操作生效</label>
+      <label>船名 <input type="text" id="override-vessel" size="10"></label>
+    </div>
+  </section>
+  <section>
+    <h2>泊位台账</h2>
+    <table id="berth-table">
+      <thead><tr><th>泊位</th><th>电压</th><th>容量</th><th>状态</th><th>船舶</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <section>
+    <h2>接入会话</h2>
+    <table id="session-table">
+      <thead><tr><th>会话</th><th>船名</th><th>泊位</th><th>状态</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <section>
+    <h2>计量运行</h2>
+    <table id="meter-table">
+      <thead><tr><th>船名</th><th>泊位</th><th>状态</th><th>采样</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+  <section>
+    <h2>告警</h2>
+    <table id="alarm-table">
+      <thead><tr><th>级别</th><th>来源</th><th>内容</th><th>确认</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+<script>
+let lastSnapshot = null;
+function tag(value, kind) {
+  return '<span class="tag ' + kind + '">' + value + '</span>';
+}
+function render(data) {
+  lastSnapshot = data;
+  document.getElementById('grid-state').textContent = data.grid.state;
+  document.getElementById('breaker-state').textContent = data.grid.breaker_closed ? '合闸' : '分闸';
+  document.getElementById('phase-state').textContent = data.grid.phase_checked ? '已完成' : '未完成';
+  document.getElementById('control-mode').textContent = data.grid.mode;
+  document.getElementById('exec-count').textContent = data.grid.executions;
+  document.getElementById('plan-shore').textContent = data.plan.shore_kva + ' kVA';
+  document.getElementById('plan-used').textContent = data.plan.used_kva + ' kVA';
+  document.getElementById('plan-remain').textContent = data.plan.remain_kva + ' kVA';
+  document.getElementById('override-box').checked = data.override.active;
+  document.getElementById('override-vessel').value = data.override.vessel || '';
+  const berthRows = data.berths.map(function (b) {
+    const st = b.state === 'idle' ? tag('空闲', 'ok') : tag(b.state, 'warn');
+    return '<tr><td>' + b.code + '</td><td>' + b.voltage_kv + 'kV</td><td>' + b.capacity_kva + '</td><td>' + st + '</td><td>' + (b.vessel || '') + '</td></tr>';
+  }).join('');
+  document.querySelector('#berth-table tbody').innerHTML = berthRows;
+  const sessionRows = data.sessions.map(function (s) {
+    const kind = s.state === 'connected' ? 'ok' : (s.state === 'failed' || s.state === 'cancelled' ? 'bad' : 'warn');
+    return '<tr><td>' + s.id + '</td><td>' + s.vessel + '</td><td>' + s.berth_id + '</td><td>' + tag(s.state, kind) + '</td></tr>';
+  }).join('');
+  document.querySelector('#session-table tbody').innerHTML = sessionRows;
+  const meterRows = data.meters.map(function (m) {
+    return '<tr><td>' + m.vessel + '</td><td>' + m.berth_id + '</td><td>' + tag(m.state, m.state === 'metering' ? 'ok' : 'warn') + '</td><td>' + m.samples + '</td></tr>';
+  }).join('');
+  document.querySelector('#meter-table tbody').innerHTML = meterRows;
+  const alarmRows = data.alarms.map(function (al) {
+    const kind = al.severity === 'critical' ? 'bad' : (al.severity === 'warning' ? 'warn' : 'ok');
+    return '<tr><td>' + tag(al.severity, kind) + '</td><td>' + al.source + '</td><td>' + al.message + '</td><td>' + (al.ack ? '已确认' : '<button onclick="ack(\'' + al.id + '\')">确认</button>') + '</td></tr>';
+  }).join('');
+  document.querySelector('#alarm-table tbody').innerHTML = alarmRows;
+}
+function tick() {
+  fetch('/api/snapshot').then(function (r) { return r.json(); }).then(render).catch(function () {});
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+function post(path, body) {
+  return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+    .then(function (r) { return r.json(); });
+}
+function separate() { post('/api/grid/separate').then(tick); }
+function dispatch() { post('/api/control/dispatch').then(tick); }
+function ack(id) { post('/api/alarms/ack', { alarm_id: id }).then(tick); }
+function setOverride() {
+  post('/api/control/override', { active: document.getElementById('override-box').checked, vessel: document.getElementById('override-vessel').value }).then(tick);
+}
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const ws = new WebSocket(proto + location.host + '/ws/console');
+  ws.onmessage = function (ev) {
+    try { render(JSON.parse(ev.data)); } catch (e) {}
+  };
+  ws.onclose = function () { setTimeout(connectWS, 3000); };
+}
+tick();
+setInterval(tick, 2000);
+connectWS();
+</script>
+</body>
+</html>
