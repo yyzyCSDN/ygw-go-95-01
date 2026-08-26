@@ -40,6 +40,7 @@ func (s *Store) MarkIdle(id string) error {
 	b.State = StateIdle
 	b.Vessel = ""
 	b.OccupiedAt = time.Time{}
+	s.cache.Put(id, StateIdle)
 	s.touchLocked()
 	return nil
 }
