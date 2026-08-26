@@ -89,6 +89,7 @@ func (g *Controller) SyncAndClose(ctx context.Context, phase Phase, timeout time
 	}
 	if err := g.breaker.Close(); err != nil {
 		g.recordEvent("breaker.failed", phase, err.Error())
+		return fmt.Errorf("breaker close: %w", err)
 	}
 	g.mu.Lock()
 	g.state = StateOnGrid

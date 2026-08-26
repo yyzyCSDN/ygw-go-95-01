@@ -96,7 +96,7 @@ func (c *Connector) Apply(req ApplyRequest) (Session, error) {
 	c.mu.Lock()
 	if req.RequestID != "" {
 		for _, sess := range c.sessions {
-			if sess.RequestID == req.RequestID {
+			if sess.RequestID == req.RequestID && sess.State != StateFailed && sess.State != StateCancelled {
 				cp := *sess
 				c.mu.Unlock()
 				return cp, nil
@@ -171,7 +171,10 @@ func (c *Connector) ConfirmVerification(id string) error {
 		c.fail(id, err)
 		return err
 	}
-	_ = c.grid.SyncAndClose(context.Background(), phase, c.syncTimeout)
+	if err := c.grid.SyncAndClose(context.Background(), phase, c.syncTimeout); err != nil {
+		c.fail(id, err)
+		return err
+	}
 	if err := c.berths.MarkOccupied(berthID, vessel); err != nil {
 		c.fail(id, err)
 		return err
@@ -259,9 +262,18 @@ func (c *Connector) fail(id string, err error) {
 	}
 	ch := c.pending[id]
 	delete(c.pending, id)
+	berthID := ""
+	if sess != nil {
+		berthID = sess.BerthID
+	}
 	c.mu.Unlock()
 	if ch != nil {
 		close(ch)
+	}
+	// 释放泊位占用与容量分配，使值班员可在纠正后重新发起接入。
+	if berthID != "" {
+		_ = c.berths.ResetState(berthID)
+		_ = c.alloc.Release(berthID)
 	}
 	c.publish("connect.failed", sess)
 }
