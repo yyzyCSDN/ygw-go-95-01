@@ -1,0 +1,11 @@
+.git
+.claude
+evidence
+runner
+staging
+private_oracles
+case_metadata
+workspaces
+verify-workspaces
+*.jsonl
+*.log
