@@ -48,6 +48,14 @@ func (g *Controller) ApplySequence(seq Sequence) error {
 			g.state = step.GridState
 			g.mu.Unlock()
 		case StepCloseBreaker:
+			// 并网门禁同样适用于序列合闸路径：相位核对未完成时不得合闸。
+			g.mu.Lock()
+			checked := g.phaseChecked
+			g.mu.Unlock()
+			if !checked {
+				g.rollback(previousGrid, appliedBerths)
+				return fmt.Errorf("sequence %s step %d: %w", seq.ID, index, ErrPhaseNotChecked)
+			}
 			if err := g.breaker.Close(); err != nil {
 				g.rollback(previousGrid, appliedBerths)
 				return fmt.Errorf("sequence %s step %d: %w", seq.ID, index, err)

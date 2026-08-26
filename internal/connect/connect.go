@@ -167,6 +167,11 @@ func (c *Connector) ConfirmVerification(id string) error {
 	vessel := sess.Vessel
 	berthID := sess.BerthID
 	c.mu.Unlock()
+	// 并网前必须先完成相位核对，作为放行合闸的前置门禁。
+	if err := c.grid.PhaseCheck(phase); err != nil {
+		c.fail(id, err)
+		return err
+	}
 	if err := c.grid.SyncAndClose(context.Background(), phase, c.syncTimeout); err != nil {
 		c.fail(id, err)
 		return err

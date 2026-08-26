@@ -25,6 +25,7 @@ var (
 	ErrSyncTimeout     = errors.New("phase sync timeout")
 	ErrAlreadyOnGrid   = errors.New("grid already on-grid")
 	ErrNotOnGrid       = errors.New("grid not on-grid")
+	ErrPhaseNotChecked = errors.New("phase check not completed before closing breaker")
 )
 
 type Controller struct {
@@ -76,6 +77,13 @@ func (g *Controller) SyncAndClose(ctx context.Context, phase Phase, timeout time
 	if g.state == StateOnGrid {
 		g.mu.Unlock()
 		return ErrAlreadyOnGrid
+	}
+	// 并网门禁：相位核对未完成或与已核对相位不一致时，禁止合闸，
+	// 避免非同期并网造成电压冲击触发船侧保护跳闸。
+	if !g.phaseChecked || g.lastPhase != phase {
+		g.mu.Unlock()
+		g.recordEvent("breaker.blocked", phase, ErrPhaseNotChecked.Error())
+		return ErrPhaseNotChecked
 	}
 	g.mu.Unlock()
 	if err := g.syncer.WaitSync(ctx, phase, timeout); err != nil {
