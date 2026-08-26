@@ -1,0 +1,17 @@
+{
+  "listen_addr": "127.0.0.1:8095",
+  "data_dir": "./data",
+  "shore_capacity_kva": 6000,
+  "voltage_kv": 10,
+  "freq_hz": 50,
+  "verify_timeout": "10s",
+  "sync_timeout": "3s",
+  "sample_every": "1s",
+  "reconcile_every": "30s",
+  "peak_start_hour": 8,
+  "peak_end_hour": 22,
+  "valley_start_hour": 22,
+  "valley_end_hour": 8,
+  "energy_unit_price": 0.85,
+  "service_unit_price": 0.15
+}
